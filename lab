@@ -1,0 +1,323 @@
+.model small
+.stack 100h
+.data
+
+put9I db 200,200,200 dup(?)
+word db 200,200,200 dup(?)
+buffer db 200,200,200 dup(0)
+
+sourceID	       dw 0
+newFileID	       dw 0
+start_string_min   dw 0
+start_string_max   dw 0
+end_string_min     dw 0
+end_string_max     dw 0
+word_len           db 0
+proverka           db 0
+probel_flag        db 1
+nashli_slovo_flag  db 0
+NULL               db 0  
+ 
+
+msg1 db 0dh, 0ah,"Enter name file: ", 0dh, 0ah, '$'
+msg2 db 0dh, 0ah,"Enter word: ",      0dh, 0ah, '$'
+msg3 db 0dh, 0ah,"Found the word", '$'
+put  db "zapis.txt", 0
+input dw "FOUND", '$'
+
+error_msg1 db 0dh, 0ah,"File not found! Try again", '$'
+error_msg2 db 0dh, 0ah,"Path not found! Try again", '$'
+error_msg3 db 0dh, 0ah,"Many open files! Try again", '$'
+error_msg4 db 0dh, 0ah,"Access is denied! Try again", '$'
+error_msg5 db 0dh, 0ah,"Invalid access mode! Try again", '$' 
+
+ 
+
+.code
+    main proc
+    mov ax, @data
+    mov ds, ax
+    
+start:
+    xor ax, ax
+    xor bx, bx
+    xor cx, cx
+    xor dx, dx
+    lea dx, msg1            ; wtite msg1
+    call puts
+    mov si, 0
+start_next: 
+    lea dx, put9I
+    call gets
+    mov put9I[si], al
+    inc si 
+    cmp al, 0dh
+    jne start_next 
+    mov put9I[si-1], 0
+    
+    mov ah, 3Ch              ; create file
+    mov cx, 0
+    mov dx, offset put
+	int 21h
+	
+	mov ah, 3dh              ; open newFile
+    mov al, 00000010b 
+    mov cl, 00000000b
+    mov dx, offset put 
+    int 21h
+    jc error_open_file 
+    mov newFileID, ax
+     
+    mov ah, 3dh              ; open File
+    mov al, 00000010b 
+    mov cl, 00000000b
+    mov dx, offset put9I 
+    int 21h
+    jc error_open_file 
+    mov sourceID, ax
+    
+    mov bx, ax
+    lea dx, msg2            ; wtite msg1
+    call puts
+    mov si, 2
+    
+write_word:
+    lea dx, word
+    call gets
+    cmp al, 32
+    je word_dlina
+    cmp al, 0dh
+    je word_dlina 
+    xor ah, ah
+    mov word[si], ax
+    inc si
+    jmp write_word 
+    
+word_dlina:
+    mov si, 2
+    cmp word[2], 0                  ; proverca na pustoi fail
+    je endk
+
+word_dlina1:                        ; dlina slowa
+    cmp word[si], 0
+    je next
+    inc si
+    add word_len, 1
+    jmp word_dlina1
+
+next:
+    mov si, 2
+next1:    
+    mov ah, 3fh
+    mov bx, sourceID
+    mov cx, 1       
+    lea dx, buffer 
+    int 21h
+    jc error_open_file
+    cmp buffer, 32                 ; sravnivaem s ' '   
+    je probel
+    cmp buffer, 0dh                ; sravmivaem s 'Enter'
+    je probel
+    cmp buffer, 0ah                ; sravmivaem s 'Newl'
+    je newl
+    cmp probel_flag, 1
+    je proverca
+    cmp buffer, 0
+    je if_buffer_0
+    mov nashli_slovo_flag, 0 
+    mov proverka, 0 
+    jmp next1
+    
+if_buffer_0:
+    cmp nashli_slovo_flag, 1
+    je endk
+    jmp newl
+    
+newl:
+    mov ah, 42h
+    mov al, 1
+    mov bx, sourceID
+    mov dx, 0
+    mov cx, 0
+    int 21h
+
+    mov ah, 42h                         
+    mov al, 0
+    mov bx, sourceID
+    mov cx, start_string_max
+    mov dx, start_string_min
+    int 21h
+    
+    mov ah, 3fh
+    mov bx, sourceID
+    mov cx, 1
+    lea dx, buffer
+    int 21h
+    
+    mov ah, 40h
+    mov bx, newFileID
+    mov cx, 1
+    mov dx, offset buffer
+    int 21h
+    jc endk
+    
+    ;mov ah, 42h
+    ;mov al, 1
+    ;mov bx, sourceID
+    ;mov dx, 0
+    ;mov cx, 0
+    ;int 21h
+    ;mov start_string_min, ax
+    ;mov start_string_max, cx
+     
+    add start_string_min, 1
+    mov ax, start_string_min
+    cmp ax, 65535
+    ja perepolnenie 
+j1:     
+    mov al, buffer
+    cmp al, 0ah
+    je next
+    cmp al, 0h
+    je endk
+    jmp newl 
+
+perepolnenie:
+    mov start_string_min, 0
+    mov start_string_max, 1
+    jmp j1
+    
+proverca:
+    mov al, buffer
+    mov bx, word[si]
+    xor bh, bh
+    cmp al, bl
+    je nashli_simvol
+    mov probel_flag, 0
+    mov si, 2
+    cmp buffer, 0
+    jne next1
+    jmp endk         
+
+probel:
+    mov probel_flag, 1
+    cmp nashli_slovo_flag, 1
+    je nashli_slovo
+    jmp next1
+                 
+nashli_simvol:                       ; sovapdenie simvolov 
+    inc si
+    add proverka, 1
+    mov al, proverka
+    mov ah, word_len
+    cmp al, ah
+    je nashli_slovo1
+    jmp next1
+
+nashli_slovo1:
+    mov nashli_slovo_flag, 1
+    mov probel_flag, 0
+    jmp next1
+
+nashli_slovo:
+    lea dx, msg3
+    call puts
+    mov proverka, 0
+    mov nashli_slovo_flag, 0
+    jmp poisk_end
+    
+poisk_end:
+    mov ah, 3fh
+    mov bx, sourceID
+    mov cx, 1       
+    lea dx, buffer 
+    int 21h
+    
+    mov al, buffer
+    cmp al, 0ah
+    jmp poisk_end
+    jne endk
+
+ustanovka:
+    mov ah, 3fh
+    mov bx, sourceID
+    mov cx, 1       
+    lea dx, buffer 
+    int 21h
+        
+    mov ah, 42h
+    mov al, 1
+    mov bx, sourceID
+    mov dx, 0
+    mov cx, 0
+    int 21h
+    mov start_string_min, ax
+    mov start_string_max, cx 
+    jmp next
+
+endk:
+    mov ah, 3eh
+    mov bx, newFileID
+    int 21h
+    mov ah, 3eh
+    mov bx, sourceID
+    int 21h
+    mov ax,4C00h
+    int 21h
+      
+    
+error_open_file: 
+   cmp ax, 02h
+   je error_1
+   cmp ax, 03h
+   je error_2
+   cmp ax, 04h
+   je error_3
+   cmp ax, 05h
+   je error_4
+   cmp ax, 0ch
+   je error_5
+   jmp start
+
+error_1:
+    lea dx, error_msg1
+    call puts
+    jmp start
+    
+error_2:
+    lea dx, error_msg2
+    call puts
+    jmp start
+    
+error_3:
+    lea dx, error_msg3
+    call puts
+    jmp start
+    
+error_4:
+    lea dx, error_msg4
+    call puts
+    jmp start
+    
+error_5:
+    lea dx, error_msg5
+    call puts
+    jmp start    
+   
+puts proc
+    mov ah, 9 
+    int 21h
+    ret
+endp puts
+
+gets proc   
+    mov ah, 01h
+    int 21h
+    ret
+endp gets
+
+gets_word proc   
+    mov ah, 0ah
+    int 21h
+    ret
+endp gets
